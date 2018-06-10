@@ -62,12 +62,15 @@ public final class JavaMain {
     // CHECKSTYLE:OFF
     public static void main(final String[] args) throws IOException {
     // CHECKSTYLE:ON
+        //初始化Zookeeper
         EmbedZookeeperServer.start(EMBED_ZOOKEEPER_PORT);
         CoordinatorRegistryCenter regCenter = setUpRegistryCenter();
+        //初始化 数据源
         JobEventConfiguration jobEventConfig = new JobEventRdbConfiguration(setUpEventTraceDataSource());
+        //执行作业 SimpleJob
         setUpSimpleJob(regCenter, jobEventConfig);
         setUpDataflowJob(regCenter, jobEventConfig);
-        setUpScriptJob(regCenter, jobEventConfig);
+//        setUpScriptJob(regCenter, jobEventConfig);
     }
     
     private static CoordinatorRegistryCenter setUpRegistryCenter() {
@@ -87,9 +90,29 @@ public final class JavaMain {
     }
     
     private static void setUpSimpleJob(final CoordinatorRegistryCenter regCenter, final JobEventConfiguration jobEventConfig) {
+        //设置配置参数 jobName, cron 表达式
         JobCoreConfiguration coreConfig = JobCoreConfiguration.newBuilder("javaSimpleJob", "0/5 * * * * ?", 3).shardingItemParameters("0=Beijing,1=Shanghai,2=Guangzhou").build();
+        //配置简单作业 JavaSimpleJob 参数   simpleJobConfig.jobClass = JavaSimpleJob.class.getCanonicalName()
         SimpleJobConfiguration simpleJobConfig = new SimpleJobConfiguration(coreConfig, JavaSimpleJob.class.getCanonicalName());
+        //组装 系统参数 和 JavaSimpleJob参数
         new JobScheduler(regCenter, LiteJobConfiguration.newBuilder(simpleJobConfig).build(), jobEventConfig).init();
+        //重点在 init() 里面
+       /*
+       public void init() {
+            //更新配置
+            LiteJobConfiguration liteJobConfigFromRegCenter = schedulerFacade.updateJobConfiguration(liteJobConfig);
+            //设置分片
+            JobRegistry.getInstance().setCurrentShardingTotalCount(liteJobConfigFromRegCenter.getJobName(), liteJobConfigFromRegCenter.getTypeConfig().getCoreConfig().getShardingTotalCount());
+            //创建Quatz scheduler (通过 StdSchedulerFactory 创建，  并设置 newJobTriggerListener )
+            //创建JobDetail 设置Job为 LiteJob.class（在LiteJob里面判断Job类型，比如：JavaSimpleJob 并执行  properties:elasticJob, jobFacade） 设置 JobDataMap 值为 实例化的 jobClass
+                 LiteJob execute 先获得 JobExecuter  然后执行  execute
+            JobScheduleController jobScheduleController = new JobScheduleController(
+                    createScheduler(), createJobDetail(liteJobConfigFromRegCenter.getTypeConfig().getJobClass()), liteJobConfigFromRegCenter.getJobName());
+            JobRegistry.getInstance().registerJob(liteJobConfigFromRegCenter.getJobName(), jobScheduleController, regCenter);
+            schedulerFacade.registerStartUpInfo(!liteJobConfigFromRegCenter.isDisabled());
+            jobScheduleController.scheduleJob(liteJobConfigFromRegCenter.getTypeConfig().getCoreConfig().getCron());
+        }
+        */
     }
     
     private static void setUpDataflowJob(final CoordinatorRegistryCenter regCenter, final JobEventConfiguration jobEventConfig) {
